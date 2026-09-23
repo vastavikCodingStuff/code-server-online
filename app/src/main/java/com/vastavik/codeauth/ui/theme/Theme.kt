@@ -2,7 +2,6 @@ package com.vastavik.codeauth.ui.theme
 
 import android.app.Activity
 import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -15,13 +14,13 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = PrimaryIndigo,
-    onPrimary = TextPrimary,
-    primaryContainer = PrimaryIndigoDark,
+    primary = PrimaryCyan,
+    onPrimary = BackgroundDark,
+    primaryContainer = PrimaryCyanDark,
     onPrimaryContainer = TextPrimary,
     secondary = AccentSlate,
     onSecondary = BackgroundDark,
-    tertiary = AccentCyan,
+    tertiary = PrimaryCyan,
     background = BackgroundDark,
     onBackground = TextPrimary,
     surface = SurfaceDark,
@@ -35,7 +34,7 @@ private val DarkColorScheme = darkColorScheme(
 
 @Composable
 fun CodeAuthTheme(
-    darkTheme: Boolean = true, // forced dark per spec (#0F141C)
+    darkTheme: Boolean = true, // forced obsidian #080C14
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {

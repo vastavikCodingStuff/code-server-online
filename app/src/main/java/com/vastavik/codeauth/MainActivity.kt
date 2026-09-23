@@ -19,16 +19,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.vastavik.codeauth.data.SecurePrefs
-import com.vastavik.codeauth.ui.screens.DashboardScreen
 import com.vastavik.codeauth.ui.screens.ScannerScreen
+import com.vastavik.codeauth.ui.screens.SessionsScreen
 import com.vastavik.codeauth.ui.screens.SettingsScreen
 import com.vastavik.codeauth.ui.theme.BackgroundDark
 import com.vastavik.codeauth.ui.theme.CodeAuthTheme
-import com.vastavik.codeauth.ui.theme.PrimaryIndigo
+import com.vastavik.codeauth.ui.theme.PrimaryCyan
+import com.vastavik.codeauth.ui.theme.SurfaceDark
 
 /**
- * MainActivity.kt — Navigation + Material 3 bottom bar (Dark #0F141C)
- * Tabs: Scanner | Dashboard (Kill-Switch) | Settings
+ * MainActivity.kt — Vastavik Authenticator
+ * Bottom nav: [Scan] [Sessions] [Settings] with obsidian theme #080C14
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,19 +46,19 @@ class MainActivity : ComponentActivity() {
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     data object Scanner : Screen("scanner", "Scan", Icons.Filled.QrCodeScanner)
-    data object Dashboard : Screen("dashboard", "Sessions", Icons.Filled.Dashboard)
+    data object Sessions : Screen("sessions", "Sessions", Icons.Filled.Dashboard)
     data object Settings : Screen("settings", "Settings", Icons.Filled.Settings)
 }
 
 @Composable
 fun CodeAuthNavHost(securePrefs: SecurePrefs) {
     val navController = rememberNavController()
-    val items = listOf(Screen.Scanner, Screen.Dashboard, Screen.Settings)
+    val items = listOf(Screen.Scanner, Screen.Sessions, Screen.Settings)
 
     Scaffold(
         containerColor = BackgroundDark,
         bottomBar = {
-            NavigationBar(containerColor = androidx.compose.ui.graphics.Color(0xFF141C2B)) {
+            NavigationBar(containerColor = SurfaceDark) {
                 val backStack by navController.currentBackStackEntryAsState()
                 val currentRoute = backStack?.destination?.route
                 items.forEach { screen ->
@@ -74,9 +75,9 @@ fun CodeAuthNavHost(securePrefs: SecurePrefs) {
                         icon = { Icon(screen.icon, contentDescription = screen.label) },
                         label = { Text(screen.label) },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = PrimaryIndigo,
-                            selectedTextColor = PrimaryIndigo,
-                            indicatorColor = PrimaryIndigo.copy(alpha = 0.18f),
+                            selectedIconColor = PrimaryCyan,
+                            selectedTextColor = PrimaryCyan,
+                            indicatorColor = PrimaryCyan.copy(alpha = 0.18f),
                             unselectedIconColor = androidx.compose.ui.graphics.Color(0xFF94A3B8),
                             unselectedTextColor = androidx.compose.ui.graphics.Color(0xFF94A3B8)
                         )
@@ -93,7 +94,7 @@ fun CodeAuthNavHost(securePrefs: SecurePrefs) {
                 .padding(paddingValues)
         ) {
             composable(Screen.Scanner.route) { ScannerScreen(securePrefs) }
-            composable(Screen.Dashboard.route) { DashboardScreen(securePrefs) }
+            composable(Screen.Sessions.route) { SessionsScreen(securePrefs) }
             composable(Screen.Settings.route) { SettingsScreen(securePrefs) }
         }
     }
