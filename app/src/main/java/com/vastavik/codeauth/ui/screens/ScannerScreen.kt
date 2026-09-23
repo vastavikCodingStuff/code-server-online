@@ -332,11 +332,10 @@ private fun CameraPreview(
                                 scanner.process(image)
                                     .addOnSuccessListener { barcodes ->
                                         for (barcode in barcodes) {
-                                            barcode.rawValue?.let { raw ->
-                                                if (raw.isNotBlank()) {
-                                                    onQrScanned(raw)
-                                                    break
-                                                }
+                                            val raw = barcode.rawValue
+                                            if (!raw.isNullOrBlank()) {
+                                                onQrScanned(raw)
+                                                break
                                             }
                                         }
                                     }

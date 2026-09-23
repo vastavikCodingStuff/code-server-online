@@ -86,6 +86,7 @@ dependencies {
 
     // Permissions (Accompanist - still works, Compose Permissions also via accompanist)
     implementation(libs.accompanist.permissions)
+    implementation(libs.androidx.material.icons.extended)
 
     debugImplementation(libs.androidx.ui.tooling)
 }
