@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,7 +39,8 @@ import java.util.TimeZone
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionsScreen(
-    securePrefs: SecurePrefs
+    securePrefs: SecurePrefs,
+    onNavigateToUpdate: () -> Unit = {}
 ) {
     val factory = remember(securePrefs) {
         object : ViewModelProvider.Factory {
@@ -80,6 +82,18 @@ fun SessionsScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark),
                 actions = {
+                    // Distinct green accent Update button — #22C55E pill
+                    Button(
+                        onClick = onNavigateToUpdate,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E), contentColor = Color.White),
+                        shape = RoundedCornerShape(50),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Icon(Icons.Filled.Update, contentDescription = "Update", modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Update", style = MaterialTheme.typography.labelLarge)
+                    }
                     IconButton(onClick = { vm.refresh() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = PrimaryCyan)
                     }
