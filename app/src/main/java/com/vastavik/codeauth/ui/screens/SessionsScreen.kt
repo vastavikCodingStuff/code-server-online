@@ -2,7 +2,6 @@ package com.vastavik.codeauth.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
@@ -24,7 +23,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.vastavik.codeauth.data.ApiService
 import com.vastavik.codeauth.data.DeviceSession
 import com.vastavik.codeauth.data.SecurePrefs
 import com.vastavik.codeauth.ui.theme.*
@@ -34,17 +32,14 @@ import java.util.TimeZone
 
 /**
  * SessionsScreen.kt — Live Device Management & Kill-Switch
- * CRITICAL FIX: GET /api/app/devices returns List<DeviceSession> (raw array)
- * - Fetches via ApiService.getActiveDevices (List)
- * - No wrapper, direct List deserialization avoids “Expected start of the object '{', but had '['”
- * - Pull-to-refresh + retry without crash
+ * - Dynamic badge: [TIGER VNC] (Cyan/Green) vs [VS CODE] (Blue/Purple) via targetService/serverDomain
+ * - Instant revocation: optimistically remove with animation, POST x-app-secret {tokenId}, snackbar, background refresh
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionsScreen(
     securePrefs: SecurePrefs
 ) {
-    val context = LocalContext.current
     val factory = remember(securePrefs) {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -57,10 +52,18 @@ fun SessionsScreen(
     val uiState by vm.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Collect error + success snackbar
+    LaunchedEffect(Unit) {
+        vm.snackbarFlow.collect { msg ->
+            snackbarHostState.showSnackbar(msg)
+        }
+    }
     LaunchedEffect(uiState.error) {
         uiState.error?.let { msg ->
-            // Show transient error but don't crash; retry is available
-            snackbarHostState.showSnackbar(msg)
+            // Avoid duplicate with snackbarFlow; show via host if not already from revoke
+            if (msg != "Session revoked. Browser disconnected.") {
+                snackbarHostState.showSnackbar(msg)
+            }
         }
     }
 
@@ -152,14 +155,15 @@ fun SessionsScreen(
                         }
                         items(uiState.sessions, key = { it.resolvedId() }) { session ->
                             val isRevoking = uiState.revokingId == session.resolvedId()
+                            // Instant optimistic removal with animation via animateItem + AnimatedVisibility
                             AnimatedVisibility(
-                                visible = uiState.sessions.any { it.resolvedId() == session.resolvedId() },
-                                enter = expandVertically(tween(300)),
+                                visible = true,
                                 exit = shrinkVertically(tween(300)) + fadeOut(tween(250))
                             ) {
                                 SessionCard(
                                     session = session,
                                     isRevoking = isRevoking,
+                                    modifier = Modifier.animateItem(),
                                     onRevoke = { vm.revokeSession(session) }
                                 )
                             }
@@ -176,16 +180,22 @@ fun SessionsScreen(
 private fun SessionCard(
     session: DeviceSession,
     isRevoking: Boolean,
+    modifier: Modifier = Modifier,
     onRevoke: () -> Unit
 ) {
     var showConfirm by remember { mutableStateOf(false) }
-    val isVnc = session.isVncScreen()
+    val isTiger = session.isTigerVnc()
+    val isVsCode = session.isVsCode()
     val badgeText = session.resolvedBadge()
-    val badgeColor = if (isVnc) BadgeVncBg else BadgeCodeBg
-    val badgeLabelColor = if (isVnc) BackgroundDark else BackgroundDark
+    val badgeColor = when {
+        isTiger -> BadgeVncBg // Cyan/Green
+        isVsCode -> BadgeCodeBg // Blue/Purple
+        else -> AccentSlate // fallback, not hardcoded VS CODE
+    }
+    val badgeLabelColor = BackgroundDark
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceCard),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -200,8 +210,8 @@ private fun SessionCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        if (isVnc) Icons.Filled.DesktopWindows else Icons.Filled.Laptop,
-                        null, tint = PrimaryCyan, modifier = Modifier.size(22.dp)
+                        if (isTiger) Icons.Filled.DesktopWindows else Icons.Filled.Laptop,
+                        null, tint = badgeColor, modifier = Modifier.size(22.dp)
                     )
                 }
                 Spacer(Modifier.width(12.dp))
@@ -243,7 +253,6 @@ private fun SessionCard(
             HorizontalDivider(color = DividerDark, thickness = 0.8.dp)
             Spacer(Modifier.height(12.dp))
 
-            // User-Agent
             session.resolvedUserAgent()?.let { ua ->
                 Row(verticalAlignment = Alignment.Top) {
                     Icon(Icons.Filled.Computer, null, tint = TextMuted, modifier = Modifier.size(16.dp))
@@ -309,13 +318,10 @@ private fun SessionCard(
 private fun formatTimestamp(raw: String): String {
     if (raw == "—" || raw.isBlank()) return raw
     return try {
-        // Try ISO8601 parsing then format to local
         val isoParser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
         val isoParser2 = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
         val isoParser3 = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
         val date = try { isoParser.parse(raw) } catch (_: Exception) { try { isoParser2.parse(raw) } catch (_: Exception) { isoParser3.parse(raw) } }
-        if (date != null) {
-            SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault()).format(date)
-        } else raw
+        if (date != null) SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault()).format(date) else raw
     } catch (_: Exception) { raw }
 }

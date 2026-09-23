@@ -29,6 +29,6 @@ val TextSecondary = Color(0xFF94A3B8)
 val TextMuted = Color(0xFF64748B)
 val DividerDark = Color(0xFF1E2A44)
 
-// Badge colors
-val BadgeCodeBg = Color(0xFF38BDF8)   // VS CODE - cyan
-val BadgeVncBg = Color(0xFFF59E0B)    // VNC SCREEN - amber
+// Badge colors per spec
+val BadgeCodeBg = Color(0xFF6366F1)   // VS CODE - Blue/Purple (indigo)
+val BadgeVncBg = Color(0xFF10B981)    // TIGER VNC - Cyan/Green (emerald) — also PrimaryCyan #38BDF8 is cyan alternative

@@ -5,17 +5,20 @@ import androidx.lifecycle.viewModelScope
 import com.vastavik.codeauth.data.ApiService
 import com.vastavik.codeauth.data.DeviceSession
 import com.vastavik.codeauth.data.SecurePrefs
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * SessionsViewModel.kt — Manages active browser sessions
+ * SessionsViewModel.kt — Live Device Management & Kill-Switch
  * - Fetches List<DeviceSession> (raw JSON Array) via ApiService
- * - Handles loading / error / empty states without crash
- * - Revoke with optimistic animated removal
+ * - Instant revocation: optimistically remove with animation, POST /api/app/revoke {tokenId: session.id}
+ * - Snackbar "Session revoked. Browser disconnected." + background refresh
  */
 data class SessionsUiState(
     val isLoading: Boolean = false,
@@ -32,14 +35,11 @@ class SessionsViewModel(
     private val _uiState = MutableStateFlow(SessionsUiState(isLoading = true))
     val uiState: StateFlow<SessionsUiState> = _uiState.asStateFlow()
 
+    private val _snackbar = MutableSharedFlow<String>(replay = 0)
+    val snackbarFlow: SharedFlow<String> = _snackbar.asSharedFlow()
+
     init {
         refresh()
-        // Observe config changes to auto-refresh
-        viewModelScope.launch {
-            securePrefs.configFlow.collect {
-                // trigger refresh on domain/secret change (debounced via distinct not needed)
-            }
-        }
     }
 
     fun refresh(isPull: Boolean = false) {
@@ -54,7 +54,6 @@ class SessionsViewModel(
             result.onSuccess { list ->
                 _uiState.update { it.copy(isLoading = false, isRefreshing = false, sessions = list, error = null) }
             }.onFailure { ex ->
-                // Preserve existing list on refresh failure, only set error
                 _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = ex.message ?: "Failed to fetch sessions") }
             }
         }
@@ -62,25 +61,51 @@ class SessionsViewModel(
 
     fun retry() = refresh()
 
-    fun revokeSession(session: DeviceSession, onSuccess: (() -> Unit)? = null) {
-        val id = session.resolvedId()
-        if (id.isBlank()) return
+    /**
+     * Instant Revocation Flow per spec:
+     * - Optimistically remove card with animation
+     * - POST /api/app/revoke with header x-app-secret and body {"tokenId": session.id}
+     * - Snackbar "Session revoked. Browser disconnected."
+     * - Background refresh
+     */
+    fun revokeSession(session: DeviceSession) {
+        // Spec mandates {"tokenId": session.id} — use resolvedId which covers id/tokenId
+        val tokenId = session.resolvedId().ifBlank { session.id }
+        if (tokenId.isBlank()) return
+
+        val snapshot = _uiState.value.sessions
+
+        // Optimistically remove with animation
+        _uiState.update { cur ->
+            cur.copy(
+                sessions = cur.sessions.filterNot { it.resolvedId() == tokenId },
+                revokingId = tokenId,
+                error = null
+            )
+        }
+
         viewModelScope.launch {
-            _uiState.update { it.copy(revokingId = id) }
             val secret = securePrefs.getSecret()
-            val result = ApiService.revokeSession(secret = secret, tokenId = id)
+            val result = ApiService.revokeSession(secret = secret, tokenId = tokenId)
             result.onSuccess { resp ->
                 val ok = resp.success != false && resp.error == null
                 if (ok) {
-                    _uiState.update { cur ->
-                        cur.copy(sessions = cur.sessions.filterNot { it.resolvedId() == id }, revokingId = null, error = null)
+                    _snackbar.emit("Session revoked. Browser disconnected.")
+                    _uiState.update { it.copy(revokingId = null) }
+                    // Trigger background refresh without loading spinner
+                    launch {
+                        val bg = ApiService.getActiveDevices(secret)
+                        bg.onSuccess { list -> _uiState.update { it.copy(sessions = list) } }
                     }
-                    onSuccess?.invoke()
                 } else {
-                    _uiState.update { it.copy(revokingId = null, error = resp.error ?: resp.message ?: "Revoke failed") }
+                    // Revert on server-reported failure
+                    _uiState.update { it.copy(sessions = snapshot, revokingId = null, error = resp.error ?: resp.message ?: "Revoke failed") }
+                    _snackbar.emit(resp.error ?: "Revoke failed")
                 }
             }.onFailure { ex ->
-                _uiState.update { it.copy(revokingId = null, error = ex.message ?: "Network error") }
+                // Revert optimistically removed card
+                _uiState.update { it.copy(sessions = snapshot, revokingId = null, error = ex.message ?: "Network error revoking") }
+                _snackbar.emit(ex.message ?: "Network error revoking")
             }
         }
     }

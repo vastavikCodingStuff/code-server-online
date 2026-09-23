@@ -40,9 +40,11 @@ data class DeviceSession(
     val id: String = "",
     @SerialName("tokenId") val tokenId: String? = null,
 
-    // Service discriminator — server can be "code.vastaviklearning.online" or "screen.vastaviklearning.online"
+    // Dynamic Service Badge — server now sends explicit fields per new spec
     @SerialName("targetService") val targetService: String? = null,
     @SerialName("target_service") val targetServiceAlt: String? = null,
+    @SerialName("serverDomain") val serverDomain: String? = null,
+    @SerialName("server_domain") val serverDomainAlt: String? = null,
     @SerialName("server") val server: String? = null,
     @SerialName("service") val service: String? = null,
 
@@ -62,16 +64,45 @@ data class DeviceSession(
 ) {
     fun resolvedId(): String = tokenId?.ifBlank { null } ?: id.ifBlank { "" }
 
-    fun resolvedTargetService(): String = targetService
-        ?: targetServiceAlt
+    fun resolvedServerDomain(): String = serverDomain
+        ?: serverDomainAlt
         ?: server
         ?: service
-        ?: "code.vastaviklearning.online"
+        ?: targetServiceAlt
+        ?: ""
 
-    fun isVncScreen(): Boolean = resolvedTargetService().contains("screen", ignoreCase = true)
-    fun isCodeServer(): Boolean = !isVncScreen()
+    fun resolvedTargetService(): String = targetService ?: targetServiceAlt ?: ""
 
-    fun resolvedBadge(): String = if (isVncScreen()) "VNC SCREEN" else "VS CODE"
+    // Badge identification per spec: check targetService or serverDomain contains "screen"
+    fun isTigerVnc(): Boolean {
+        val t = resolvedTargetService()
+        if (t.equals("TigerVNC", ignoreCase = true)) return true
+        if (t.contains("tiger", ignoreCase = true)) return true
+        if (resolvedServerDomain().contains("screen", ignoreCase = true)) return true
+        if (server?.contains("screen", ignoreCase = true) == true) return true
+        return false
+    }
+
+    fun isVsCode(): Boolean {
+        val t = resolvedTargetService()
+        if (t.equals("VS Code", ignoreCase = true)) return true
+        if (t.contains("vs", ignoreCase = true) && t.contains("code", ignoreCase = true)) return true
+        if (resolvedServerDomain().contains("code", ignoreCase = true)) return true
+        if (server?.contains("code", ignoreCase = true) == true) return true
+        return false
+    }
+
+    // Legacy helpers for backward compat
+    fun isVncScreen(): Boolean = isTigerVnc()
+    fun isCodeServer(): Boolean = isVsCode()
+
+    fun resolvedBadge(): String = when {
+        isTigerVnc() -> "TIGER VNC"
+        isVsCode() -> "VS CODE"
+        resolvedTargetService().isNotBlank() -> resolvedTargetService().uppercase()
+        resolvedServerDomain().isNotBlank() -> resolvedServerDomain().uppercase().let { if (it.contains("SCREEN")) "TIGER VNC" else if (it.contains("CODE")) "VS CODE" else it }
+        else -> "UNKNOWN"
+    }
 
     fun resolvedDeviceName(): String = deviceName
         ?: deviceNameAlt
